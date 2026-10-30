@@ -61,7 +61,7 @@ main_df = bike_df[(bike_df["dteday"] >= str(start_date)) &
                   (bike_df["dteday"] <= str(end_date))]
 
 # Filter Musim (Season)
-season_options = main_df['season_label'].unique()
+season_options = main_df['season_label'].dropna().unique()
 selected_season = st.sidebar.multiselect(
     'Pilih Musim:', 
     options=season_options,
@@ -101,13 +101,13 @@ if main_df.empty:
     st.warning("Tidak ada data pada rentang waktu/musim yang dipilih. Silahkan sesuaikan filter di sidebar.")
 else:
     # Data preparation
-    p1_data = main_df.groupby(by=['workingday', 'hr'])['cnt'].mean().reset_index()
-    p1_data['Tipe Hari'] = p1_data['workingday'].map({0: 'Hari Libur/Akhir Pekan', 1: 'Hari Kerja'})
+    p1_data = main_df.dropna(subset=['workingday_label']).groupby(by=['workingday_label', 'hr'])['cnt'].mean().reset_index()
+    p1_data = p1_data.rename(columns={'workingday_label': 'Tipe Hari'})
 
     fig1, ax1 = plt.subplots(figsize=(12, 6))
 
     # Menggunakan dictionary pada palette aar tidak error jika salah satu kategori hilang karena filter
-    sns.lineplot(data=p1_data, x='hr', y='cnt', hue='Tipe Hari', palette={'Hari Kerja': '#33C1FF', 'Hari Libur/Akhir Pekan': '#FF5733'}, linewidth=2.5, ax=ax1)
+    sns.lineplot(data=p1_data, x='hr', y='cnt', hue='Tipe Hari', palette={'Hari Kerja': '#33C1FF', 'Hari Libur': '#FF5733'}, linewidth=2.5, ax=ax1)
 
     ax1.set_title('Perbandingan Rata-rata Penyewaan Sepeda per Jam', fontsize=14, fontweight='bold', pad=15)
     ax1.set_xlabel('Jam (0-23)', fontsize=12)
@@ -160,15 +160,19 @@ else:
     q1 = main_df['cnt'].quantile(0.33)
     q2 = main_df['cnt'].quantile(0.66)
 
+    # Jika nilai q1 dan q1 sama (karena data terlalu sedikit), gunakan max() agar tidak error
+    if q1 == q2:
+        q1 = main_df['cnt'].min()
+        q2 = main_df['cnt'].max()
+        if q1 == q2:
+            q2 = q1 + 1     # Paksa beda 1 angka
+
     # Menggunakan float('inf) sebagai batas agar tidak error jika nilai max berubah-ubah
     main_df['demand_category'] = pd.cut(
         main_df['cnt'],
         bins=[-1, q1, q2, float('inf')],
         labels=['Rendah', 'Sedang', 'Tinggi']
     )
-
-    weekday_map = {0: 'Minggu', 1: 'Senin', 2: 'Selasa', 3: 'Rabu', 4: 'Kamis', 5: 'Jumat', 6: 'Sabtu'}
-    main_df['weekday_label'] = main_df['weekday'].map(weekday_map)
 
     # Pivot
     pivot_binning = main_df.groupby(['weekday_label', 'hr'])['demand_category'].agg(lambda x: x.mode()[0] if not x.mode().empty else np.nan).unstack()
